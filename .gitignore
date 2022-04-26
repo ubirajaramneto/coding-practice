@@ -1,3 +1,6 @@
 node_modules
 .idea
 dist
+diary.txt
+paused
+src/*
