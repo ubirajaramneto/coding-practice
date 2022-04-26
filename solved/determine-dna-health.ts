@@ -1,99 +1,19 @@
 // https://www.hackerrank.com/challenges/determining-dna-health/problem?isFullScreen=true
 // Basically we need to implement a suffix array and the longest common prefix array
-// Just going to drop this brain dump here with all my experiments on the subject for later reference.
 
-interface ITestCase {
-  baseCase: {
-    genes: Array<string>,
-    health: Array<number>
-  },
-  genes: {
-    d: string,
-    first: number,
-    last: number
-  }
-}
-
-const testCase = {
-  baseCase: {
-    genes: ['a', 'b', 'c', 'aa', 'd', 'b'],
-    health: [1,2,3,4,5,6]
-  },
-  genes: {
-    d: 'caaab',
-    first: 1,
-    last:5
-  }
-};
+const Genes = ['a','b','c','aa','d','b'];
+const Health = [1,2,3,4,5,6];
+const DNA = 'bcdybc';
+const First = 2;
+const Last = 4;
 
 // Based on the test case above, output should be 2 integers, 0 and 19
-function solution(args: ITestCase): void {
-  // Write your code here
-  // let solve this first with the hash structures so we can have a better idea.
-  // HASH SOLUTION =======================================
-  let S=args.genes.d;
-  // let S='ABABA';
-  // Add lexicographic lowest character $.
-  // S=S+'$';
-  // console.log('S: ', S);
-  // const stringHash = buildStringHash(S);
-  // console.log('String hash: ', stringHash);
-  // const suffixHash = buildSuffixHash(stringHash);
-  // console.log('Suffix hash: ', suffixHash);
-  // const LCP = buildLCPHash(suffixHash, S);
-  // console.log('LCP: ', LCP);
-  // ARRAY SOLUTION =======================================
-  const suffixArray = buildSuffixArray(S);
+function solution(genes: Array<string>, health: Array<number>, dna:string, first:number, last:number): void {
+  const suffixArray = buildSuffixArray(dna);
   console.log(suffixArray);
-  const lcp = buildLCPArray(suffixArray, S);
-  console.log(lcp);
-  const geneHash = buildGeneHealthHash(args);
-  console.log(geneHash);
-  const healthScore = calculateHealth(suffixArray, S, args, geneHash);
-  console.log('SCORE: ', healthScore)
-
-}
-
-type TStringHash = {
-  [key:string]: number
-}
-
-function buildStringHash(S):TStringHash {
-  const result = {};
-  for (let i = 0; i < S.length; i++) {
-    const suffix = S.slice(i, S.length);
-    result[suffix] = i;
-  }
-  return result;
-}
-
-function buildSuffixHash(SH:TStringHash):TStringHash {
-  const result = {};
-  const SHKeys = Object.keys(SH).sort();
-  for (let i = 0; i < SHKeys.length; i++) {
-    console.log('SA: ', SHKeys[i]);
-    result[i] = SH[SHKeys[i]];
-  }
-  return result;
-}
-
-function buildLCPHash(SH:TStringHash, S:string) {
-  const result = {0: 0};
-  for (let i = 1; i < Object.keys(SH).length; i++) {
-    const suffix = getSuffix(SH, S, i);
-    const prevSuffix = getSuffix(SH, S, i-1);
-    let LCP = 0;
-    for (let j = 0; j < suffix.length; j++) {
-      if (suffix[j] !== prevSuffix[j] && j === 0) break;
-      if (suffix[j] !== '$' && suffix[j] === prevSuffix[j]) LCP += 1;
-    }
-    result[i] = LCP;
-  }
-  return result;
-}
-
-function getSuffix(SH:TStringHash, S:string, index) {
-  return S.slice(SH[index]);
+  const genesArray = buildOrderedGeneArray(genes, health, first, last);
+  const sum = calculateHealth(suffixArray, genesArray, dna);
+  console.log('SUM: ', sum);
 }
 
 function buildSuffixArray(S:string):Array<number> {
@@ -112,68 +32,151 @@ function buildSuffixArray(S:string):Array<number> {
   return result;
 }
 
-function buildLCPArray(SA:Array<number>, S:string) {
-  const lcp = [0]; // by convention the first item is always 0
-  for (let i = 1; i < SA.length; i++) {
-    let lcpCounter = 0;
-    const currentSuffix = S.slice(SA[i]);
-    const prevSuffix = S.slice(SA[i-1]);
-    for (let j = 0; j < currentSuffix.length; j++) {
-      if (j === 0 && currentSuffix[j] !== prevSuffix[j]) break;
-      if (currentSuffix[j] !== '$' && currentSuffix[j] === prevSuffix[j]) lcpCounter += 1;
-    }
-    lcp.push(lcpCounter);
+function buildOrderedGeneArray(genes:Array<string>, health:Array<number>, first:number, last:number) {
+  let filteredGenes = genes.slice(first, last+1);
+  let filteredHealth = health.slice(first, last+1);
+  let concatenatedArray = filteredGenes.map((item, index) => {
+    return `${item}:${filteredHealth[index].toString()}`;
+  });
+  return findDuplicateHealthEntry(concatenatedArray.sort());
+}
+
+function findDuplicateHealthEntry(health: Array<string>) {
+  const h = {};
+  for (let i = 0; i < health.length; i++) {
+    const gene = health[i].split(':');
+    h[gene[0]] = h[gene[0]] ? h[gene[0]] + parseInt(gene[1]) : parseInt(gene[1]);
   }
-  return lcp;
+  return Object.keys(h).map((item) => `${item}:${h[item]}`);
 }
-
-type TCompressedTrie = {
-  root: boolean,
-  children: TCompressedTrie,
-  leaf: boolean
-}
-
-function buildGeneHealthHash(gene:ITestCase) {
-  const result = {};
-  for (let i = 0; i < gene.baseCase.genes.length; i++) {
-    result[i] = {
-      gene: gene.baseCase.genes[i],
-      health: gene.baseCase.health[i]
-    }
-  }
-  return result;
-}
-
-function calculateHealth(SA:Array<number>, S:string, sample:ITestCase, geneHealth:object) {
-  let unhealthiest = 0;
-  let healthiest = 0;
-  for (let i = 0; i < SA.length; i++) {
-    const suffix = S.slice(SA[i], S.length);
-    console.log('suffix: ', suffix);
-    let sum = 0;
-    for (let j = sample.genes.first; j <= sample.genes.last; j++) {
-      if (suffix.includes(geneHealth[j].gene)) sum += geneHealth[j].health;
-      console.log('geneHealth: ', geneHealth[j].gene, sum);
-    }
-    if (sum > healthiest) healthiest = sum;
-    if (sum < unhealthiest) unhealthiest = sum;
-  }
-  return {unhealthiest, healthiest};
-}
-
-solution(testCase)
 
 /*
-* based on the lecture on strings from MIT OCW, there is a certain way this problem can be solved.
-* based on weighted trees and trays.
-*
-* Interesting resources:
-*
-* https://en.wikipedia.org/wiki/LCP_array
-* https://en.wikipedia.org/wiki/Suffix_tree#CITEREFFarach1997
-* https://en.wikipedia.org/wiki/Trie
-* https://en.wikipedia.org/wiki/Radix_tree
-* https://en.wikipedia.org/wiki/Suffix_array
-* This following link explains in detail the building of a suffix tree
-* https://www.cise.ufl.edu/~sahni/dsaaj/enrich/c16/suffix.htm
-*/
+ * Algorithm:
+ * Considering we have both geneHealth and suffixArray in order:
+ * [ 'aaab', 'aab', 'ab', 'b', 'caaab' ]
+ * [ 'aa:4', 'b:8', 'c:3', 'd:5' ]
+ * We start with 2 pointers, i, j, each for their respective arrays.
+ * considering i and j as 1:
+ * ['aaab']
+ * ['aa:4']
+ * we extract the left side of the string aa of the geneHealth array,
+ * and check if the respective substring is in the suffixArray item.
+ * In the above example, it is, which will cause a match.
+ *
+ * We need to consider the following cases:
+ *
+ * Case1: when both suffixArray[i][k] && geneHealth[j][k], where k is the iterator for the substring suffixArray[i]
+ * =============================
+ * k = 0
+ * i = 0
+ * j = 0
+ * sa = suffixArray[i][k] = ['aaab']
+ *                            ^
+ * gh = geneHealth[j][k] = ['aa']
+ *                           ^
+ * Keep iterating k until gh === sa.
+ * Sum the corresponding gene.
+ *
+ * iterate i
+ * =============================
+ * k = 0
+ * i = 1
+ * j = 0
+ * sa = suffixArray[i][k] = ['aab']
+ *                            ^
+ * gh = geneHealth[j][k] = ['aa']
+ *                           ^
+ * Keep iterating until gh === sa.
+ * Sum the corresponding gene.
+ *
+ * iterate i
+ * =============================
+ * k = 0
+ * i = 2
+ * j = 0
+ * sa = suffixArray[i][k] = ['ab']
+ *                            ^
+ * gh = geneHealth[j][k] = ['aa']
+ *                           ^
+ * Keep iterating until gh === sa.
+ * In this case, there is no match, sum does not happen.
+ *
+ * iterate i
+ * =============================
+ * k = 0
+ * i = 3
+ * j = 0
+ * sa = suffixArray[i][k] = ['b']
+ *                            ^
+ * gh = geneHealth[j][k] = ['aa']
+ *                           ^
+ * Case2: sa !== gh && k ===0
+ * In this case, it means that we should move j, in order to move forward and find the next available gene.
+ * We move j because sa[k] > gh[k], if the case was that sa[k] < gh[k], we would then increment i.
+ *
+ * iterate j
+ * =============================
+ * k = 0
+ * i = 3
+ * j = 1
+ * sa = suffixArray[i][k] = ['b']
+ *                            ^
+ * gh = geneHealth[j][k] = ['b']
+ *                           ^
+ * sa !== gh
+ * Sum the corresponding gene.
+ *
+ * iterate i
+ * =============================
+ * k = 0
+ * i = 4
+ * j = 1
+ * sa = suffixArray[i][k] = ['caaab']
+ *                            ^
+ * gh = geneHealth[j][k] = ['b']
+ *                           ^
+ * Case2: sa !== gh && k ===0
+ * In this case, it means that we should move j, in order to move forward and find the next available gene.
+ *
+ * iterate j
+ * =============================
+ * k = 0
+ * i = 4
+ * j = 2
+ * sa = suffixArray[i][k] = ['caaab']
+ *                            ^
+ * gh = geneHealth[j][k] = ['c']
+ *                           ^
+ * gh === sa
+ * Sum the corresponding gene
+ *
+ * iterate i
+ * end
+ *
+ * */
+
+function calculateHealth(suffixArray:Array<number>, geneHealth:Array<string>, dna:string) {
+  let sum = 0; // consider that all gene health values are positive integers
+  let i = 0; // suffixArray pointer
+  let j = 0; // geneHealth pointer
+  while (j < geneHealth.length && i < suffixArray.length) {
+    const gene = geneHealth[j].split(':');
+    const suffix = dna.slice(suffixArray[i]);
+    console.log('calc: ', gene, suffix, sum);
+    if (gene[0][0] === suffix[0]) {
+      if (suffix.includes(gene[0])) { // instead of iterating with k, just check to see if the first character matches
+        sum += parseInt(gene[1]);
+      }
+      i += 1;
+    } else if (suffix[0] > gene[0]) {
+      j += 1;
+    } else {
+      i += 1;
+    }
+    if (i === suffixArray.length) j += 1;
+    if (j === geneHealth.length) i += 1;
+  }
+  return sum;
+}
+
+solution(Genes, Health, DNA, First, Last);
