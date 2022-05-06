@@ -1,182 +1,192 @@
-// https://www.hackerrank.com/challenges/determining-dna-health/problem?isFullScreen=true
-// Basically we need to implement a suffix array and the longest common prefix array
+// interesting links:
+// http://web.stanford.edu/class/archive/cs/cs166/cs166.1196/lectures/04/Small04.pdf
+// https://www.youtube.com/watch?v=OIuG_Dqyl_s&t=228s
+// https://www.cin.ufpe.br/~paguso/courses/if767/bib/Ko_2005.pdf
 
-const Genes = ['a','b','c','aa','d','b'];
-const Health = [1,2,3,4,5,6];
-const DNA = 'bcdybc';
-const First = 2;
-const Last = 4;
+// Not solved yet, will return to this one once I have more time
 
-// Based on the test case above, output should be 2 integers, 0 and 19
-function solution(genes: Array<string>, health: Array<number>, dna:string, first:number, last:number): void {
-  const suffixArray = buildSuffixArray(dna);
-  console.log(suffixArray);
-  const genesArray = buildOrderedGeneArray(genes, health, first, last);
-  const sum = calculateHealth(suffixArray, genesArray, dna);
-  console.log('SUM: ', sum);
+import {readFileSync} from "fs";
+
+const L = 'L';
+const S = 'S';
+const Sstar = 'S*';
+
+type SAISInput = {
+  S:string;
+  SA:Array<string>;
+  alphabet:Map<string, number>;
+  bucketCount:Map<string, number>;
+  buckets:Map<string, Array<number>>;
+  types:Array<string>;
 }
 
-function buildSuffixArray(S:string):Array<number> {
-  const result = [];
-  let unsortedSA = [];
-  let sortedSA = [];
-  for (let i = 0; i < S.length; i++) {
-    unsortedSA.push(S.slice(i));
+class EnhancedSuffixArray {
+
+  S:string;
+  SA:Array<number>;
+  alphabet:Map<string, number>;
+  bucketCount:Map<string, number>;
+  buckets:Map<string, Array<number>>;
+  bucketPointer:Map<string, number>;
+  types:Array<string>;
+  explicitSA: Array<string>;
+  LMS: Array<number>;
+  LMSSuffixSummary: Array<number>;
+  LMSSuffixSummaryOffset: Array<number>;
+  reverseBucket: Array<string>;
+
+  constructor(S:string) {
+    this.S = S + '$';
+    this.SA = [];
+    this.explicitSA = [];
+    this.alphabet = new Map();
+    this.bucketCount = new Map();
+    this.buckets = new Map();
+    this.bucketPointer = new Map();
+    this.types = [];
+    this.LMS = [];
+    this.reverseBucket = [];
+    this.classify();
   }
-  sortedSA = [...unsortedSA];
-  sortedSA.sort();
-  console.log(sortedSA);
-  for (let i = 0; i < sortedSA.length; i++) {
-    result.push(unsortedSA.indexOf(sortedSA[i]));
+
+  inducedSorting(text:string = this.S, SA:any = this.SA) {
+    this.positionLMSSuffixes(text);
+    this.inducedSortL(text);
+    this.inducedSortS(text);
+    this.getSAFromMap();
   }
-  return result;
-}
 
-function buildOrderedGeneArray(genes:Array<string>, health:Array<number>, first:number, last:number) {
-  let filteredGenes = genes.slice(first, last+1);
-  let filteredHealth = health.slice(first, last+1);
-  let concatenatedArray = filteredGenes.map((item, index) => {
-    return `${item}:${filteredHealth[index].toString()}`;
-  });
-  return findDuplicateHealthEntry(concatenatedArray.sort());
-}
-
-function findDuplicateHealthEntry(health: Array<string>) {
-  const h = {};
-  for (let i = 0; i < health.length; i++) {
-    const gene = health[i].split(':');
-    h[gene[0]] = h[gene[0]] ? h[gene[0]] + parseInt(gene[1]) : parseInt(gene[1]);
-  }
-  return Object.keys(h).map((item) => `${item}:${h[item]}`);
-}
-
-/*
- * Algorithm:
- * Considering we have both geneHealth and suffixArray in order:
- * [ 'aaab', 'aab', 'ab', 'b', 'caaab' ]
- * [ 'aa:4', 'b:8', 'c:3', 'd:5' ]
- * We start with 2 pointers, i, j, each for their respective arrays.
- * considering i and j as 1:
- * ['aaab']
- * ['aa:4']
- * we extract the left side of the string aa of the geneHealth array,
- * and check if the respective substring is in the suffixArray item.
- * In the above example, it is, which will cause a match.
- *
- * We need to consider the following cases:
- *
- * Case1: when both suffixArray[i][k] && geneHealth[j][k], where k is the iterator for the substring suffixArray[i]
- * =============================
- * k = 0
- * i = 0
- * j = 0
- * sa = suffixArray[i][k] = ['aaab']
- *                            ^
- * gh = geneHealth[j][k] = ['aa']
- *                           ^
- * Keep iterating k until gh === sa.
- * Sum the corresponding gene.
- *
- * iterate i
- * =============================
- * k = 0
- * i = 1
- * j = 0
- * sa = suffixArray[i][k] = ['aab']
- *                            ^
- * gh = geneHealth[j][k] = ['aa']
- *                           ^
- * Keep iterating until gh === sa.
- * Sum the corresponding gene.
- *
- * iterate i
- * =============================
- * k = 0
- * i = 2
- * j = 0
- * sa = suffixArray[i][k] = ['ab']
- *                            ^
- * gh = geneHealth[j][k] = ['aa']
- *                           ^
- * Keep iterating until gh === sa.
- * In this case, there is no match, sum does not happen.
- *
- * iterate i
- * =============================
- * k = 0
- * i = 3
- * j = 0
- * sa = suffixArray[i][k] = ['b']
- *                            ^
- * gh = geneHealth[j][k] = ['aa']
- *                           ^
- * Case2: sa !== gh && k ===0
- * In this case, it means that we should move j, in order to move forward and find the next available gene.
- * We move j because sa[k] > gh[k], if the case was that sa[k] < gh[k], we would then increment i.
- *
- * iterate j
- * =============================
- * k = 0
- * i = 3
- * j = 1
- * sa = suffixArray[i][k] = ['b']
- *                            ^
- * gh = geneHealth[j][k] = ['b']
- *                           ^
- * sa !== gh
- * Sum the corresponding gene.
- *
- * iterate i
- * =============================
- * k = 0
- * i = 4
- * j = 1
- * sa = suffixArray[i][k] = ['caaab']
- *                            ^
- * gh = geneHealth[j][k] = ['b']
- *                           ^
- * Case2: sa !== gh && k ===0
- * In this case, it means that we should move j, in order to move forward and find the next available gene.
- *
- * iterate j
- * =============================
- * k = 0
- * i = 4
- * j = 2
- * sa = suffixArray[i][k] = ['caaab']
- *                            ^
- * gh = geneHealth[j][k] = ['c']
- *                           ^
- * gh === sa
- * Sum the corresponding gene
- *
- * iterate i
- * end
- *
- * */
-
-function calculateHealth(suffixArray:Array<number>, geneHealth:Array<string>, dna:string) {
-  let sum = 0; // consider that all gene health values are positive integers
-  let i = 0; // suffixArray pointer
-  let j = 0; // geneHealth pointer
-  while (j < geneHealth.length && i < suffixArray.length) {
-    const gene = geneHealth[j].split(':');
-    const suffix = dna.slice(suffixArray[i]);
-    console.log('calc: ', gene, suffix, sum);
-    if (gene[0][0] === suffix[0]) {
-      if (suffix.includes(gene[0])) { // instead of iterating with k, just check to see if the first character matches
-        sum += parseInt(gene[1]);
+  positionLMSSuffixes(text) {
+    for (let i = 0; i < this.types.length; i++) {
+      if (this.types[i] === Sstar) {
+        let bucket = this.buckets.get(text[i]);
+        let pointer = this.bucketPointer.get(text[i]);
+        bucket[pointer] = i;
+        if (pointer > 0) pointer -= 1;
+        this.buckets.set(text[i], bucket);
+        this.bucketPointer.set(text[i], pointer);
       }
-      i += 1;
-    } else if (suffix[0] > gene[0]) {
-      j += 1;
-    } else {
-      i += 1;
     }
-    if (i === suffixArray.length) j += 1;
-    if (j === geneHealth.length) i += 1;
+    this.resetBucketPointersHead();
   }
-  return sum;
+
+  inducedSortL(text:string) {
+    this.resetBucketPointersHead();
+    this.buckets.forEach((value, key, map) => {
+      this.reverseBucket.unshift(key);
+      const bucket = map.get(key);
+      for (let i = 0; i < bucket.length; i++) {
+        if (this.types[bucket[i]-1] === L && bucket[i] > -1) {
+          const SABucketToInsert = text[bucket[i]-1];
+          let SAPointerOfBucket = this.bucketPointer.get(SABucketToInsert);
+          const SABucket = this.buckets.get(SABucketToInsert);
+          SABucket[SAPointerOfBucket] = bucket[i]-1;
+          SAPointerOfBucket += 1;
+          this.buckets.set(SABucketToInsert, SABucket);
+          this.bucketPointer.set(SABucketToInsert, SAPointerOfBucket);
+        }
+      }
+    });
+  }
+
+  inducedSortS(text:string) {
+    this.resetBucketPointersEnd();
+    for (let i = 0; i < this.reverseBucket.length-1; i++) {
+      const bucket = this.buckets.get(this.reverseBucket[i]);
+      for (let j = bucket.length-1; j >= 0; j--) {
+        if (this.types[bucket[j]-1] === S || this.types[bucket[j]-1] === Sstar) {
+          const SABucketToInsert = text[bucket[j]-1];
+          let SAPointerOfBucket = this.bucketPointer.get(SABucketToInsert);
+          const SABucket = this.buckets.get(SABucketToInsert);
+          SABucket[SAPointerOfBucket] = bucket[j]-1;
+          SAPointerOfBucket -= 1;
+          this.buckets.set(SABucketToInsert, SABucket);
+          this.bucketPointer.set(SABucketToInsert, SAPointerOfBucket);
+        }
+      }
+    }
+  }
+
+  getCharCode(char:string) {
+    if(char === '$' || !char) return 0;
+    return char.charCodeAt(0)-96;
+  }
+
+  resetBucketPointersHead() {
+    this.bucketPointer.forEach((value,key,map) => {
+      map.set(key, 0);
+    })
+  }
+
+  resetBucketPointersEnd() {
+    this.bucketPointer.forEach((value,key,map) => {
+      map.set(key, this.buckets.get(key).length-1);
+    })
+  }
+
+
+  classify() {
+    this.types.push(Sstar);
+    let Ti = 0; // reverse counter for T
+    for (let i = this.S.length-1; i > 0; i--) {
+      const charCode = this.getCharCode(this.S[i]);
+      const nextCharCode = this.getCharCode(this.S[i-1]);
+      this.alphabet.set(this.S[i], charCode);
+      !this.bucketCount.get(this.S[i])
+        ? this.bucketCount.set(this.S[i], 1)
+        : this.bucketCount.set(this.S[i], this.bucketCount.get(this.S[i]) + 1);
+      if (this.types[Ti] === L && this.types[Ti-1] === S) {
+        this.types[Ti-1] = Sstar;
+      }
+      if (nextCharCode < charCode) {
+        this.types.push(S);
+      }
+      if (nextCharCode > charCode) {
+        this.types.push(L);
+      }
+      if (nextCharCode === charCode) {
+        this.types.push(this.types[this.types.length-1]);
+      }
+      Ti += 1;
+    }
+    this.types.reverse();
+    const keys = Array.from(this.alphabet.keys()).sort();
+    for (let i = 0; i < keys.length; i++) {
+      this.buckets.set(keys[i], []);
+      for (let j = 0; j < this.bucketCount.get(keys[i]); j++) {
+        this.buckets.get(keys[i]).push(-1);
+      }
+      this.bucketPointer.set(keys[i], this.buckets.get(keys[i]).length-1);
+    }
+    for (let i = 0; i < this.types.length; i++) {
+      if (this.types[i] === Sstar) this.LMS.push(i);
+    }
+  }
+
+  private _buildSA(value, key, map) {
+    for (let i = 0; i < map.get(key).length; i++) {
+      this.SA.push(map.get(key)[i]);
+    }
+  }
+
+  private _buildExplicitSA() {
+    for (let i = 0; i < this.SA.length; i++) {
+      this.explicitSA.push(this.S.slice(this.SA[i]))
+    }
+  }
+
+  getSAFromMap() {
+    this.SA = [];
+    this.explicitSA = [];
+    this._buildSA = this._buildSA.bind(this);
+    this.buckets.forEach(this._buildSA);
+    this._buildExplicitSA();
+    return this.SA;
+  }
 }
 
-solution(Genes, Health, DNA, First, Last);
+const esa = new EnhancedSuffixArray('mmiissiissiippii');
+// const dna = readFileSync('./test-cases/test3.txt', {encoding: 'utf8'});
+// const esa = new EnhancedSuffixArray(dna);
+esa.inducedSorting();
+console.log('buckets after induced sorting: ', esa.buckets, esa.SA);
